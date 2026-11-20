@@ -1,4 +1,4 @@
-"""Preliminary CS425 console menu for phaseii.sql.
+"""Preliminary console menu for phaseii.sql.
 
 Run on the machine that can reach the PostgreSQL server:
     python main_menu.py
