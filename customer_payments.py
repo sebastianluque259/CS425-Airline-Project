@@ -36,6 +36,125 @@ def get_customer(conn, email_address):
             return cur.fetchone()
 
 
+def update_customer_name(conn, email_address, new_name):
+    """Update a customer's name."""
+    new_name = new_name.strip()
+
+    if not new_name:
+        raise ValueError("Name cannot be empty.")
+
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE Customer
+                   SET name = %s
+                   WHERE email_address = %s
+                   RETURNING name;""",
+                (new_name, email_address)
+            )
+
+            if cur.fetchone() is None:
+                raise ValueError("Customer not found.")
+
+
+def update_customer_home_airport(conn, email_address, new_airport):
+    """Update a customer's home airport."""
+    new_airport = new_airport.strip().upper() if new_airport else None
+
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE Customer
+                   SET home_airport = %s
+                   WHERE email_address = %s
+                   RETURNING home_airport;""",
+                (new_airport, email_address)
+            )
+
+            if cur.fetchone() is None:
+                raise ValueError("Customer not found.")
+
+
+def update_customer_email(conn, old_email, new_email):
+    """Change a customer's email while preserving cards, addresses and bookings."""
+    new_email = new_email.strip()
+
+    if not new_email:
+        raise ValueError("Email cannot be empty.")
+
+    if old_email == new_email:
+        return new_email
+
+    with conn:
+        with conn.cursor() as cur:
+
+            # Get existing customer
+            cur.execute(
+                """SELECT name, home_airport
+                   FROM Customer
+                   WHERE email_address = %s
+                   FOR UPDATE;""",
+                (old_email,)
+            )
+
+            customer = cur.fetchone()
+
+            if customer is None:
+                raise ValueError("Customer not found.")
+
+            name, home_airport = customer
+
+            # Create customer with new email
+            cur.execute(
+                """INSERT INTO Customer
+                   (email_address, name, home_airport)
+                   VALUES (%s, %s, %s);""",
+                (new_email, name, home_airport)
+            )
+
+            # Copy payment addresses
+            cur.execute(
+                """INSERT INTO Customer_Payment_Address
+                   (email_address, payment_address)
+                   SELECT %s, payment_address
+                   FROM Customer_Payment_Address
+                   WHERE email_address = %s;""",
+                (new_email, old_email)
+            )
+
+            # Reassign credit cards
+            cur.execute(
+                """UPDATE Credit_Card
+                   SET email_address = %s
+                   WHERE email_address = %s;""",
+                (new_email, old_email)
+            )
+
+            # Reassign bookings
+            cur.execute(
+                """UPDATE Booking
+                   SET email_address = %s
+                   WHERE email_address = %s;""",
+                (new_email, old_email)
+            )
+
+            # Remove old payment addresses
+            cur.execute(
+                """DELETE FROM Customer_Payment_Address
+                   WHERE email_address = %s;""",
+                (old_email,)
+            )
+
+            # Remove original customer record
+            cur.execute(
+                """DELETE FROM Customer
+                   WHERE email_address = %s;""",
+                (old_email,)
+            )
+
+    return new_email
+
+
 def add_payment_address(conn, email_address, payment_address):
     """Add one address for a registered customer."""
     with conn:
@@ -70,7 +189,7 @@ def update_payment_address(conn, email_address, old_address, new_address):
     the schema. A duplicate new address will raise a UNIQUE violation.
     """
     if old_address == new_address:
-        return
+        return "New address must be different from the old address."
     with conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -166,3 +285,5 @@ def delete_credit_card(conn, email_address, card_id):
             )
             if cur.fetchone() is None:
                 raise ValueError("Card not found for this customer.")
+
+#IMPORTANT: deleting a card already used in BookingFlight will be blocked by the existing foreign key. We can decide later whether to preserve historical cards through an inactive status instead.
