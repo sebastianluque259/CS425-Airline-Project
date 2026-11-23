@@ -5,6 +5,19 @@ from dotenv import load_dotenv
 from prettytable import PrettyTable
 import getpass
 
+from customer_payments import (
+    register_customer,
+    get_customer,
+    add_payment_address,
+    list_payment_addresses,
+    update_payment_address,
+    delete_payment_address,
+    add_credit_card,
+    list_credit_cards,
+    update_credit_card_address,
+    delete_credit_card,
+)
+
 
 # Step 2: Load environment variables
 load_dotenv()
